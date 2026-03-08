@@ -1,0 +1,30 @@
+.PHONY: build run docker clean
+
+# ----------------------------------
+# Nom du binaire PORA
+# ----------------------------------
+BINARY_NAME=pora-ranking-service
+
+# ----------------------------------
+# Build local du service PORA
+# ----------------------------------
+build:
+	go build -o bin/$(BINARY_NAME) .
+
+# ----------------------------------
+# Lancer le service localement
+# ----------------------------------
+run: build
+	./bin/$(BINARY_NAME)
+
+# ----------------------------------
+# Build de l'image Docker PORA
+# ----------------------------------
+docker:
+	docker build -t pora-ranking-service:latest .
+
+# ----------------------------------
+# Nettoyage des binaires locaux
+# ----------------------------------
+clean:
+	rm -rf bin

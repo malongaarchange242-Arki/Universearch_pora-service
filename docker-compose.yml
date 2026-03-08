@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  pora-ranking-service:
+    # Image construite localement
+    build:
+      context: .
+      dockerfile: Dockerfile
+
+    image: pora-ranking-service:latest
+    container_name: pora-ranking-service
+
+    # Exposition de l’API REST PORA
+    ports:
+      - "8080:8080"
+
+    # Variables d’environnement (Supabase, Cron, etc.)
+    env_file:
+      - .env
+
+    # Redémarrage automatique en cas de crash
+    restart: unless-stopped
+
+    # ----------------------------------------
+    # HEALTHCHECK
+    # Vérifie que l’API PORA est vivante
+    # ----------------------------------------
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
