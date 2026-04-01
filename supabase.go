@@ -486,3 +486,127 @@ func fetchCentreRecommendationView() ([]CentreRecommendation, error) {
 
 	return rows, nil
 }
+
+// ============================================================
+// 🎓 FILIÈRES LINKED TO UNIVERSITÉS
+// ============================================================
+
+func fetchFilieresForUniversites(universiteIDs []string) ([]string, error) {
+	if len(universiteIDs) == 0 {
+		return []string{}, nil
+	}
+
+	// Build filter for IN clause
+	var inFilter strings.Builder
+	for i, id := range universiteIDs {
+		if i > 0 {
+			inFilter.WriteString(",")
+		}
+		inFilter.WriteString(fmt.Sprintf("\"%s\"", id))
+	}
+
+	u, _ := url.Parse(SupabaseURL + "/rest/v1/universite_filieres")
+	q := u.Query()
+	q.Set("select", "filieres(nom)")
+	q.Set("universite_id", fmt.Sprintf("in.(%s)", inFilter.String()))
+	q.Set("limit", "1000")
+	u.RawQuery = q.Encode()
+
+	var rows []map[string]interface{}
+
+	resp, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetResult(&rows).
+		Get(u.String())
+
+	if err != nil || resp.IsError() {
+		log.Printf("⚠️ Error fetching filieres for universites: HTTP %d", resp.StatusCode())
+		return []string{}, nil
+	}
+
+	// Extract unique filiere names and avoid duplicates
+	filieresMap := make(map[string]bool)
+	for _, row := range rows {
+		if filiere, ok := row["filieres"]; ok {
+			if filiere != nil {
+				if filiereSub, ok := filiere.(map[string]interface{}); ok {
+					if name, ok := filiereSub["nom"].(string); ok {
+						filieresMap[name] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	filieresSlice := make([]string, 0, len(filieresMap))
+	for name := range filieresMap {
+		filieresSlice = append(filieresSlice, name)
+	}
+
+	log.Printf("📚 Filières universités trouvées: %v", filieresSlice)
+	return filieresSlice, nil
+}
+
+// ============================================================
+// 🎓 FILIÈRES LINKED TO CENTRES
+// ============================================================
+
+func fetchFilieresForCentres(centreIDs []string) ([]string, error) {
+	if len(centreIDs) == 0 {
+		return []string{}, nil
+	}
+
+	// Build filter for IN clause
+	var inFilter strings.Builder
+	for i, id := range centreIDs {
+		if i > 0 {
+			inFilter.WriteString(",")
+		}
+		inFilter.WriteString(fmt.Sprintf("\"%s\"", id))
+	}
+
+	u, _ := url.Parse(SupabaseURL + "/rest/v1/centre_formation_filieres")
+	q := u.Query()
+	q.Set("select", "filieres(nom)")
+	q.Set("centre_id", fmt.Sprintf("in.(%s)", inFilter.String()))
+	q.Set("limit", "1000")
+	u.RawQuery = q.Encode()
+
+	var rows []map[string]interface{}
+
+	resp, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetResult(&rows).
+		Get(u.String())
+
+	if err != nil || resp.IsError() {
+		log.Printf("⚠️ Error fetching filieres for centres: HTTP %d", resp.StatusCode())
+		return []string{}, nil
+	}
+
+	// Extract unique filiere names and avoid duplicates
+	filieresMap := make(map[string]bool)
+	for _, row := range rows {
+		if filiere, ok := row["filieres"]; ok {
+			if filiere != nil {
+				if filiereSub, ok := filiere.(map[string]interface{}); ok {
+					if name, ok := filiereSub["nom"].(string); ok {
+						filieresMap[name] = true
+					}
+				}
+			}
+		}
+	}
+
+	// Convert map to slice
+	filieresSlice := make([]string, 0, len(filieresMap))
+	for name := range filieresMap {
+		filieresSlice = append(filieresSlice, name)
+	}
+
+	log.Printf("📚 Filières centres trouvées: %v", filieresSlice)
+	return filieresSlice, nil
+}

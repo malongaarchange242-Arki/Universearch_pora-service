@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"io"
 	"log"
 	"net/http"
 	"net/url"
@@ -337,6 +339,82 @@ func GetUniversiteRecommendations(c *gin.Context) {
 	c.JSON(200, data)
 }
 
+func PostUniversiteRecommendations(c *gin.Context) {
+	// 📥 Recevoir les filières recommandées de PROA
+	var body struct {
+		UserID            string   `json:"user_id"`
+		RecommendedFields []string `json:"recommended_fields"`
+		QuizType          string   `json:"quiz_type"`
+	}
+
+	// Log le body brut pour debug
+	rawBody := c.Request.Body
+	defer rawBody.Close()
+	bodyBytes, _ := io.ReadAll(rawBody)
+	log.Printf("📨 Raw body reçu: %s", string(bodyBytes))
+
+	// Remettre le body pour le parsing
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		log.Printf("❌ POST /recommendations/universites - Bind error: %v", err)
+		log.Printf("   Body reçu: %s", string(bodyBytes))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body", "details": err.Error()})
+		return
+	}
+
+	log.Printf("🎯 POST /recommendations/universites - User: %s, Fields: %v", body.UserID, body.RecommendedFields)
+	log.Printf("🔥 DEBUG - Field count: %d, Field values: %#v", len(body.RecommendedFields), body.RecommendedFields)
+
+	// 🔒 Gestion des filières vides
+	if body.RecommendedFields == nil || len(body.RecommendedFields) == 0 {
+		log.Printf("⚠️ Pas de filières recommandées - retour array vide")
+		c.JSON(http.StatusOK, gin.H{
+			"universites":  []map[string]interface{}{},
+			"univFilieres": []string{},
+		})
+		return
+	}
+
+	// 🔥 Filtrer les universités basées sur les filières recommandées
+	filteredUniversites, err := filterUniversitesByFields(body.RecommendedFields)
+	if err != nil {
+		log.Printf("❌ POST /recommendations/universites - Filter error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// ✅ S'assurer que le résultat n'est jamais nil
+	if filteredUniversites == nil {
+		filteredUniversites = []map[string]interface{}{}
+	}
+
+	// 🎓 Récupérer les IDs des universités filtrées
+	universiteIDs := make([]string, 0)
+	for _, uni := range filteredUniversites {
+		if id, ok := uni["id"].(string); ok {
+			universiteIDs = append(universiteIDs, id)
+		}
+	}
+
+	// 📚 Récupérer les filières liées aux universités
+	univFilieres := []string{}
+	if len(universiteIDs) > 0 {
+		filieres, err := fetchFilieresForUniversites(universiteIDs)
+		if err == nil {
+			univFilieres = filieres
+		}
+	}
+
+	log.Printf("✅ Universités filtrées: %d résultats", len(filteredUniversites))
+	log.Printf("📚 Filières universités: %v", univFilieres)
+
+	c.JSON(http.StatusOK, gin.H{
+		"universites":  filteredUniversites,
+		"univFilieres": univFilieres,
+	})
+}
+
 func GetCentreRecommendations(c *gin.Context) {
 
 	data, err := fetchCentreRecommendationView()
@@ -345,4 +423,79 @@ func GetCentreRecommendations(c *gin.Context) {
 		return
 	}
 	c.JSON(200, data)
+}
+
+func PostCentreRecommendations(c *gin.Context) {
+	// 📥 Recevoir les filières recommandées de PROA
+	var body struct {
+		UserID            string   `json:"user_id"`
+		RecommendedFields []string `json:"recommended_fields"`
+		QuizType          string   `json:"quiz_type"`
+	}
+
+	// Log le body brut pour debug
+	rawBody := c.Request.Body
+	defer rawBody.Close()
+	bodyBytes, _ := io.ReadAll(rawBody)
+	log.Printf("📨 Raw body reçu (centres): %s", string(bodyBytes))
+
+	// Remettre le body pour le parsing
+	c.Request.Body = io.NopCloser(bytes.NewBuffer(bodyBytes))
+
+	if err := c.ShouldBindJSON(&body); err != nil {
+		log.Printf("❌ POST /recommendations/centres - Bind error: %v", err)
+		log.Printf("   Body reçu: %s", string(bodyBytes))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body", "details": err.Error()})
+		return
+	}
+
+	log.Printf("🎯 POST /recommendations/centres - User: %s, Fields: %v", body.UserID, body.RecommendedFields)
+
+	// 🔒 Gestion des filières vides
+	if body.RecommendedFields == nil || len(body.RecommendedFields) == 0 {
+		log.Printf("⚠️ Pas de filières recommandées - retour array vide")
+		c.JSON(http.StatusOK, gin.H{
+			"centres":        []map[string]interface{}{},
+			"centreFilieres": []string{},
+		})
+		return
+	}
+
+	// 🔥 Filtrer les centres basées sur les filières recommandées
+	filteredCentres, err := filterCentresByFields(body.RecommendedFields)
+	if err != nil {
+		log.Printf("❌ POST /recommendations/centres - Filter error: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// ✅ S'assurer que le résultat n'est jamais nil
+	if filteredCentres == nil {
+		filteredCentres = []map[string]interface{}{}
+	}
+
+	// 🎓 Récupérer les IDs des centres filtrés
+	centreIDs := make([]string, 0)
+	for _, centre := range filteredCentres {
+		if id, ok := centre["id"].(string); ok {
+			centreIDs = append(centreIDs, id)
+		}
+	}
+
+	// 📚 Récupérer les filières liées aux centres
+	centreFilieres := []string{}
+	if len(centreIDs) > 0 {
+		filieres, err := fetchFilieresForCentres(centreIDs)
+		if err == nil {
+			centreFilieres = filieres
+		}
+	}
+
+	log.Printf("✅ Centres filtrés: %d résultats", len(filteredCentres))
+	log.Printf("📚 Filières centres: %v", centreFilieres)
+
+	c.JSON(http.StatusOK, gin.H{
+		"centres":        filteredCentres,
+		"centreFilieres": centreFilieres,
+	})
 }

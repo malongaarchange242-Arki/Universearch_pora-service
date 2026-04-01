@@ -54,7 +54,9 @@ func RegisterRoutes(r *gin.Engine) {
 	// 📌 RECOMMANDATIONS (PROA → PORA)
 	// ------------------------------------------------
 	r.GET("/recommendations/universites", GetUniversiteRecommendations)
+	r.POST("/recommendations/universites", PostUniversiteRecommendations)
 	r.GET("/recommendations/centres", GetCentreRecommendations)
+	r.POST("/recommendations/centres", PostCentreRecommendations)
 
 }
 

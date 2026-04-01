@@ -119,6 +119,33 @@ create table engagements_centres_formation (
   date timestamp default now()
 );
 
+-- =========================================================
+-- DOMAINES & FILIÈRES POUR CENTRES
+-- =========================================================
+
+create table domaines_centre (
+    id uuid primary key default gen_random_uuid(),
+    nom text not null unique,
+    description text,
+    created_at timestamp default now()
+);
+
+create table filieres_centre (
+    id uuid primary key default gen_random_uuid(),
+    nom text not null,
+    description text,
+    domaine_id uuid references domaines_centre(id) on delete cascade,
+    created_at timestamp default now()
+);
+
+create table centre_formation_filieres (
+    id uuid primary key default gen_random_uuid(),
+    centre_id uuid references centres_formation(id) on delete cascade,
+    filiere_id uuid references filieres_centre(id) on delete cascade,
+    created_at timestamp default now(),
+    constraint uniq_centre_filiere unique (centre_id, filiere_id)
+);
+
 create index idx_engagements_centres_centre
 on engagements_centres_formation (centre_id);
 
