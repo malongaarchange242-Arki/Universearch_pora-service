@@ -51,8 +51,10 @@ func main() {
 			"http://localhost:5502",
 			"http://127.0.0.1:8000",
 			"http://localhost:8000",
+			"https://pora-frontend.onrender.com",
+			"https://universearch-pora-frontend.onrender.com",
 		}, // front local
-		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE"},
+		AllowMethods:     []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowHeaders:     []string{"Origin", "Content-Type", "x-user-id", "Authorization"},
 		ExposeHeaders:    []string{"Content-Length"},
 		AllowCredentials: true,
