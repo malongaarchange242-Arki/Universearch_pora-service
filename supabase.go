@@ -555,6 +555,10 @@ func replaceOrientationRecommendations(userID, profileID, targetType string, tar
 		return fmt.Errorf("unsupported target_type: %s", targetType)
 	}
 
+	if err := ensureUserExists(userID); err != nil {
+		return fmt.Errorf("ensure user exists: %w", err)
+	}
+
 	if err := deleteOrientationRecommendations(userID, targetType); err != nil {
 		return err
 	}
@@ -638,6 +642,65 @@ func insertOrientationRecommendations(rows []map[string]interface{}) error {
 		return fmt.Errorf("insert orientation recommendations HTTP %d: %s", resp.StatusCode(), resp.String())
 	}
 
+	return nil
+}
+
+func ensureUserExists(userID string) error {
+	userID = strings.TrimSpace(userID)
+	if userID == "" {
+		return fmt.Errorf("user_id is required")
+	}
+
+	u, _ := url.Parse(SupabaseURL + "/rest/v1/utilisateurs")
+	q := u.Query()
+	q.Set("select", "id")
+	q.Set("id", "eq."+userID)
+	u.RawQuery = q.Encode()
+
+	resp, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetHeader("Accept", "application/json").
+		Get(u.String())
+
+	if err != nil {
+		return fmt.Errorf("check utilisateur existence: %w", err)
+	}
+	if resp.IsError() {
+		return fmt.Errorf("check utilisateur HTTP %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	var rows []map[string]interface{}
+	if err := json.Unmarshal(resp.Body(), &rows); err != nil {
+		return fmt.Errorf("parse utilisateur check response: %w", err)
+	}
+
+	if len(rows) > 0 {
+		return nil
+	}
+
+	// Create missing user with minimal fields
+	insertBody := []map[string]interface{}{{
+		"id": userID,
+	}}
+
+	u2, _ := url.Parse(SupabaseURL + "/rest/v1/utilisateurs")
+	resp2, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Prefer", "return=minimal").
+		SetBody(insertBody).
+		Post(u2.String())
+
+	if err != nil {
+		return fmt.Errorf("create utilisateur: %w", err)
+	}
+	if resp2.IsError() {
+		return fmt.Errorf("create utilisateur HTTP %d: %s", resp2.StatusCode(), resp2.String())
+	}
+
+	log.Printf("✅ User auto-created: %s", userID)
 	return nil
 }
 
