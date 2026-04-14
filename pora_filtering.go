@@ -131,12 +131,12 @@ func mapRecommendedFieldsToFilieres(recommendedFields []string, allFilieres []ma
 			score, matchType := matchFiliere(fieldTrimmed, filiereNom)
 
 			// Log détaillé
-			if score >= 0.7 {
+			if score >= 0.65 {
 				logMatchResult(fieldTrimmed, filiereNom, score, matchType)
 			}
 
 			// Ajouter si score acceptable
-			if score >= 0.7 {
+			if score >= 0.65 {
 				matchedFilieres = append(matchedFilieres, FilierMatch{
 					FiliereID:  filiereID,
 					FiliereNom: filiereNom,
@@ -160,7 +160,7 @@ func mapRecommendedFieldsToFilieres(recommendedFields []string, allFilieres []ma
 		}
 	}
 
-	log.Printf("\n✅ [RÉSUMÉ] %d filières matchées (score ≥ 0.7)", len(uniqueIDs))
+	log.Printf("\n✅ [RÉSUMÉ] %d filières matchées (score ≥ 0.65)", len(uniqueIDs))
 	for _, match := range matchedFilieres[:min(5, len(matchedFilieres))] {
 		log.Printf("  • %s (%.0f%%) [%s]", match.FiliereNom, match.Score*100, match.MatchType)
 	}

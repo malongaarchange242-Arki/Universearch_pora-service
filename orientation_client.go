@@ -15,6 +15,7 @@ import (
 // Réponse complète du microservice Orientation
 type OrientationComputeResponse struct {
 	UserID     string    `json:"user_id"`
+	ProfileID  string    `json:"profile_id"` // 🔗 Traçabilité pour enregistrement recommandations
 	Profile    []float64 `json:"profile"`
 	Confidence float64   `json:"confidence"`
 }

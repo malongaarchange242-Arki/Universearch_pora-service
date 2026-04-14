@@ -24,6 +24,10 @@ type EnrichedNode struct {
 func RankUniversitesForUser(userID string) ([]EnrichedNode, error) {
 	log.Printf("[RANK USER] 📊 Calcul ranking personnalisé pour %s", userID)
 
+	// 🆔 Générer un session_id unique pour cette demande
+	sessionID := GenerateSessionID()
+	log.Printf("🔗 Session ID généré: %s", sessionID)
+
 	// 1️⃣ Récupérer le ranking PORA de base
 	baseNodes, err := RankUniversites()
 	if err != nil {
@@ -38,13 +42,21 @@ func RankUniversitesForUser(userID string) ([]EnrichedNode, error) {
 		return convertToEnrichedNodes(baseNodes, nil), nil
 	}
 
-	log.Printf("✅ Profil utilisateur reçu: confidence=%.2f", userProfile.Confidence)
+	log.Printf("✅ Profil utilisateur reçu: confidence=%.2f | profile_id=%s", userProfile.Confidence, userProfile.ProfileID)
 
 	// 3️⃣ Enrichir le ranking avec le profil utilisateur
 	enrichedNodes := enrichNodesWithUserProfile(baseNodes, userProfile)
 
 	// 4️⃣ Trier par score enrichi
 	sortNodesByScore(enrichedNodes)
+
+	// 📊 NOUVEAU: Enregistrer les recommandations pour analyse
+	go func() {
+		err := SaveRecommendations(userID, userProfile.ProfileID, sessionID, enrichedNodes, userProfile)
+		if err != nil {
+			log.Printf("⚠️  Erreur enregistrement recommandations: %v", err)
+		}
+	}()
 
 	return enrichedNodes, nil
 }

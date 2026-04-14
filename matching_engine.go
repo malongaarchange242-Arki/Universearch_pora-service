@@ -190,7 +190,7 @@ func matchFiliere(recommendedField string, filiereNom string) (float64, string) 
 			// Score basé sur la position et la longueur
 			score := 0.8
 			if strings.HasPrefix(filLower, variant) {
-				score = 0.9  // Bonus si au début
+				score = 0.9 // Bonus si au début
 			}
 			if score > maxScore {
 				maxScore = score
@@ -205,6 +205,14 @@ func matchFiliere(recommendedField string, filiereNom string) (float64, string) 
 		if phraseScore > maxScore {
 			maxScore = phraseScore
 			matchType = "PHRASE"
+		}
+	}
+
+	// 0️⃣ Generic field matching fallback
+	if isFieldMatch(recommendedField, filiereNom) {
+		if maxScore < 0.7 {
+			maxScore = 0.7
+			matchType = "IS_FIELD"
 		}
 	}
 
@@ -239,10 +247,10 @@ func countCommonChars(a, b string) int {
 // ============================================================
 
 type FilierMatch struct {
-	FiliereID string
+	FiliereID  string
 	FiliereNom string
-	Score     float64
-	MatchType string
+	Score      float64
+	MatchType  string
 }
 
 // rankFiliereMatches trie les matchs par score décroissant
@@ -283,17 +291,17 @@ func logMatchResult(recommendedField string, filiereNom string, score float64, m
 /*
 func filterUniversitesByFieldsIntelligent(recommendedFields []string) ([]map[string]interface{}, error) {
 	allFilieres, _ := fetchAllFilieres()
-	
+
 	matchedMap := make(map[string]FilierMatch) // filiere_id → best match
-	
+
 	for _, recField := range recommendedFields {
 		for _, fil := range allFilieres {
 			filID := fmt.Sprintf("%v", fil["id"])
 			filNom := fmt.Sprintf("%v", fil["nom"])
-			
+
 			score, matchType := matchFiliere(recField, filNom)
 			logMatchResult(recField, filNom, score, matchType)
-			
+
 			// Garder le meilleur score pour cette filière
 			if score >= 0.7 { // Seuil minimum
 				if existing, found := matchedMap[filID]; !found || score > existing.Score {
@@ -307,14 +315,14 @@ func filterUniversitesByFieldsIntelligent(recommendedFields []string) ([]map[str
 			}
 		}
 	}
-	
+
 	// Convertir en slice et trier
 	var matches []FilierMatch
 	for _, m := range matchedMap {
 		matches = append(matches, m)
 	}
 	matches = rankFiliereMatches(matches)
-	
+
 	// Retourner les universités qui offrent ces filières
 	...
 }

@@ -62,6 +62,215 @@ func parseSupabaseCount(resp *resty.Response) (float64, error) {
 }
 
 // ============================================================
+// BUSINESS MAPPING FUNCTIONS
+// ============================================================
+
+// normalizeField normalizes a field name for better matching
+func normalizeField(field string) string {
+	// Convert to lowercase
+	normalized := strings.ToLower(field)
+
+	// Replace common variations
+	normalized = strings.ReplaceAll(normalized, "&", "et")
+	normalized = strings.ReplaceAll(normalized, "and", "et")
+	normalized = strings.ReplaceAll(normalized, "é", "e")
+	normalized = strings.ReplaceAll(normalized, "è", "e")
+	normalized = strings.ReplaceAll(normalized, "ê", "e")
+	normalized = strings.ReplaceAll(normalized, "à", "a")
+	normalized = strings.ReplaceAll(normalized, "â", "a")
+	normalized = strings.ReplaceAll(normalized, "ô", "o")
+	normalized = strings.ReplaceAll(normalized, "û", "u")
+	normalized = strings.ReplaceAll(normalized, "ï", "i")
+	normalized = strings.ReplaceAll(normalized, "ç", "c")
+
+	// Remove punctuation and extra spaces
+	normalized = strings.ReplaceAll(normalized, ",", " ")
+	normalized = strings.ReplaceAll(normalized, ";", " ")
+	normalized = strings.ReplaceAll(normalized, "-", " ")
+	normalized = strings.ReplaceAll(normalized, "_", " ")
+	normalized = strings.ReplaceAll(normalized, "(", " ")
+	normalized = strings.ReplaceAll(normalized, ")", " ")
+	normalized = strings.ReplaceAll(normalized, "[", " ")
+	normalized = strings.ReplaceAll(normalized, "]", " ")
+	normalized = strings.ReplaceAll(normalized, "{", " ")
+	normalized = strings.ReplaceAll(normalized, "}", " ")
+
+	// Split into words, clean, and rejoin
+	words := strings.Fields(normalized)
+	var cleanWords []string
+	for _, word := range words {
+		word = strings.TrimSpace(word)
+		if len(word) > 1 { // Keep words longer than 1 char
+			cleanWords = append(cleanWords, word)
+		}
+	}
+
+	return strings.Join(cleanWords, " ")
+}
+
+// isFieldMatch checks if two fields match using intelligent keyword matching
+// Avoids generic "genie" matches that create false positives.
+func isFieldMatch(userField, uniField string) bool {
+	userNorm := normalizeField(userField)
+	uniNorm := normalizeField(uniField)
+
+	if userNorm == "" || uniNorm == "" {
+		return false
+	}
+
+	if isExcludedField(uniNorm) || isExcludedField(userNorm) {
+		return false
+	}
+
+	// Keyword-based matching for common business domains
+	businessKeywords := []string{"compta", "comptabilite", "finance", "gestion", "business", "commerce", "marketing", "vente", "trade", "entrepreneur", "management", "audit", "controle"}
+	if containsAnyText(userNorm, businessKeywords) {
+		return containsAnyText(uniNorm, businessKeywords)
+	}
+
+	// IT keywords (no generic "genie" to avoid false positives)
+	itKeywords := []string{"informatique", "logiciel", "developpement", "programmation", "data", "science", "intelligence", "artificielle", "ia", "reseau", "reseaux", "telecom", "telecommunication", "securite", "cyber", "systeme", "systemes"}
+
+	// Engineering keywords (non-generic)
+	engKeywords := []string{"mecanique", "electrique", "electronique", "civil", "chimie", "chimique", "industriel", "procedes", "geologique", "hydrosystemes", "hydrosysteme", "aeronautique"}
+
+	if containsGenieInformatique(userNorm) {
+		return containsAnyText(uniNorm, itKeywords)
+	}
+
+	if containsAnyText(userNorm, itKeywords) {
+		return containsAnyText(uniNorm, itKeywords)
+	}
+
+	if containsAnyText(userNorm, engKeywords) {
+		return containsAnyText(uniNorm, engKeywords)
+	}
+
+	// Direct substring match (case insensitive), guarded against generic "genie" only
+	if strings.Contains(userNorm, uniNorm) || strings.Contains(uniNorm, userNorm) {
+		if isGenericGenieOnly(userNorm) || isGenericGenieOnly(uniNorm) {
+			return false
+		}
+		return true
+	}
+
+	return false
+}
+
+func isExcludedField(text string) bool {
+	excludedKeywords := []string{
+		"geologique",
+		"hydrosysteme",
+		"hydrosystemes",
+		"chimie",
+		"chimique",
+		"biologie",
+		"biotechnologie",
+		"agronomie",
+	}
+	return containsAnyText(text, excludedKeywords)
+}
+
+func containsAnyText(text string, keywords []string) bool {
+	for _, keyword := range keywords {
+		if keyword == "" {
+			continue
+		}
+		if strings.Contains(text, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsGenieInformatique(text string) bool {
+	return strings.Contains(text, "genie informatique") || strings.Contains(text, "ingenierie informatique")
+}
+
+func isGenericGenieOnly(text string) bool {
+	if !(strings.Contains(text, "genie") || strings.Contains(text, "ingenierie")) {
+		return false
+	}
+
+	itKeywords := []string{"informatique", "logiciel", "developpement", "programmation", "data", "science", "intelligence", "artificielle", "ia", "reseau", "reseaux", "telecom", "telecommunication", "securite", "cyber", "systeme", "systemes"}
+	engKeywords := []string{"mecanique", "electrique", "electronique", "civil", "chimie", "chimique", "industriel", "procedes", "geologique", "hydrosystemes", "hydrosysteme", "aeronautique"}
+
+	return !containsAnyText(text, itKeywords) && !containsAnyText(text, engKeywords)
+}
+
+// containsKeyword checks if a slice of words contains a keyword
+func containsKeyword(words []string, keyword string) bool {
+	for _, word := range words {
+		if strings.Contains(word, keyword) {
+			return true
+		}
+	}
+	return false
+}
+
+// expandRecommendedFields maps PROA recommended fields to actual centre filiere names
+// This handles the mismatch between academic field names and vocational training names
+func expandRecommendedFields(recommendedFields []string) []string {
+	// 🔥 BUSINESS MAPPING: PROA fields -> Centre/University filiere names
+	mapping := map[string][]string{
+		// IT fields
+		"Génie Informatique":                      {"Informaticien, programmeur", "Développement informatique", "Technicien en informatique", "Génie Informatique", "Informatique"},
+		"Développement Informatique":              {"Informaticien, programmeur", "Développement informatique", "Génie Informatique", "Informatique"},
+		"Architecture des Systèmes Informatiques": {"Informaticien, programmeur", "Technicien en informatique", "Génie Informatique", "Informatique"},
+		"Data Science":                            {"Informaticien, programmeur", "Statistiques et analyse de données", "Data Science", "Intelligence Artificielle"},
+		"Intelligence Artificielle":               {"Informaticien, programmeur", "Intelligence Artificielle", "Data Science"},
+
+		// Engineering fields
+		"Génie Civil":      {"Technicien en bâtiment", "Dessinateur en bâtiment", "Génie Civil"},
+		"Génie Électrique": {"Électrotechnicien", "Technicien en électronique", "Génie Électrique"},
+		"Génie Mécanique":  {"Technicien en mécanique", "Mécanicien", "Génie Mécanique"},
+
+		// Business fields - MAPPING CRUCIAL POUR ESTAM
+		"Comptabilité & Gestion d'Entreprise": {"Comptabilité", "Gestion financière", "Audit", "Comptabilité et Contrôle de Gestion", "Comptabilité & Finances", "Finance", "Gestion", "Économie"},
+		"Commerce International":              {"Assistant commercial", "Commerce", "Commerce International", "Marketing"},
+		"Marketing":                           {"Assistant commercial", "Communication", "Marketing"},
+		"Finance":                             {"Comptabilité", "Gestion financière", "Finance", "Audit"},
+		"Économie":                            {"Comptabilité", "Gestion", "Économie", "Finance"},
+
+		// Other fields
+		"Droit":         {"Assistant juridique", "Droit"},
+		"Médecine":      {"Auxiliaire de santé", "Infirmier", "Médecine"},
+		"Pharmacie":     {"Préparateur en pharmacie", "Pharmacie"},
+		"Biologie":      {"Technicien de laboratoire", "Biotechnologie", "Biologie"},
+		"Chimie":        {"Technicien de laboratoire", "Chimie"},
+		"Physique":      {"Technicien de laboratoire", "Physique"},
+		"Lettres":       {"Assistant administratif", "Communication", "Lettres"},
+		"Histoire":      {"Assistant administratif", "Histoire"},
+		"Géographie":    {"Assistant commercial", "Géographie"},
+		"Mathématiques": {"Statistiques et analyse de données", "Mathématiques"},
+	}
+
+	var expanded []string
+
+	// Add original fields
+	expanded = append(expanded, recommendedFields...)
+
+	// Add mapped fields
+	for _, field := range recommendedFields {
+		if mapped, exists := mapping[field]; exists {
+			expanded = append(expanded, mapped...)
+		}
+	}
+
+	// Remove duplicates
+	seen := make(map[string]bool)
+	var result []string
+	for _, field := range expanded {
+		if !seen[field] {
+			seen[field] = true
+			result = append(result, field)
+		}
+	}
+
+	return result
+}
+
+// ============================================================
 // 🔵 UNIVERSITÉS
 // ============================================================
 
@@ -330,6 +539,183 @@ func fetchOrientationScores(targetType string) (map[string]float64, error) {
 	}
 
 	return out, nil
+}
+
+func replaceOrientationRecommendations(userID, profileID, targetType string, targetIDs []string, recommendedFields []string, sessionID string, targetNames map[string]string) error {
+	userID = strings.TrimSpace(userID)
+	profileID = strings.TrimSpace(profileID)
+	targetType = strings.TrimSpace(targetType)
+	sessionID = strings.TrimSpace(sessionID)
+
+	if userID == "" {
+		return fmt.Errorf("user_id is required")
+	}
+
+	if targetType != "universite" && targetType != "centre" {
+		return fmt.Errorf("unsupported target_type: %s", targetType)
+	}
+
+	if err := deleteOrientationRecommendations(userID, targetType); err != nil {
+		return err
+	}
+
+	targetIDs = uniqueOrderedIDs(targetIDs)
+	if len(targetIDs) == 0 {
+		return nil
+	}
+
+	reason := buildOrientationRecommendationReason(recommendedFields)
+	rows := make([]map[string]interface{}, 0, len(targetIDs))
+	minimalRows := make([]map[string]interface{}, 0, len(targetIDs))
+
+	for idx, targetID := range targetIDs {
+		score := deriveOrientationRecommendationScore(idx, len(targetIDs))
+
+		// ✅ Extraire le nom avec fallback propre
+		targetName := targetNames[targetID]
+		if strings.TrimSpace(targetName) == "" {
+			if targetType == "universite" {
+				targetName = "Université inconnue"
+			} else {
+				targetName = "Centre inconnue"
+			}
+		}
+
+		// ✅ Calculer confidence de manière sophistiquée
+		confidence := 0.7 + (score * 0.3) // Base 0.7 + variation selon score
+
+		rows = append(rows, map[string]interface{}{
+			"user_id":     userID,
+			"profile_id":  profileID, // 🔗 Traçabilité vers PROA
+			"session_id":  sessionID, // ✅ Groupe toutes les recommandations de cette session
+			"target_type": targetType,
+			"target_id":   targetID,
+			"target_name": targetName, // ✅ FIX: Inclure le nom
+			"score":       score,
+			"rank":        idx + 1,
+			"confidence":  confidence, // ✅ FIX: Calcul sophistiqué
+			"reason":      reason,
+		})
+
+		minimalRows = append(minimalRows, map[string]interface{}{
+			"user_id":     userID,
+			"profile_id":  profileID, // 🔗 Traçabilité vers PROA
+			"session_id":  sessionID, // ✅ Même en fallback minimal
+			"target_type": targetType,
+			"target_id":   targetID,
+			"target_name": targetName, // ✅ FIX: Inclure le nom
+			"score":       score,
+			"rank":        idx + 1,    // ✅ FIX: Ajouter rank au fallback
+			"confidence":  confidence, // ✅ FIX: Même calcul sophistiqué
+		})
+	}
+
+	if err := insertOrientationRecommendations(rows); err != nil {
+		log.Printf("⚠️ Insert enrichi orientation_recommendations a échoué, fallback minimal: %v", err)
+		if fallbackErr := insertOrientationRecommendations(minimalRows); fallbackErr != nil {
+			return fallbackErr
+		}
+	}
+
+	log.Printf("✅ %d recommandations %s persistées - user_id=%s | profile_id=%s | session_id=%s", len(rows), targetType, userID, profileID, sessionID)
+	return nil
+}
+
+func insertOrientationRecommendations(rows []map[string]interface{}) error {
+	u, _ := url.Parse(SupabaseURL + "/rest/v1/orientation_recommendations")
+	resp, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetHeader("Content-Type", "application/json").
+		SetHeader("Prefer", "return=minimal").
+		SetBody(rows).
+		Post(u.String())
+
+	if err != nil {
+		return fmt.Errorf("insert orientation recommendations: %w", err)
+	}
+	if resp.IsError() {
+		return fmt.Errorf("insert orientation recommendations HTTP %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	return nil
+}
+
+func deleteOrientationRecommendations(userID, targetType string) error {
+	u, _ := url.Parse(SupabaseURL + "/rest/v1/orientation_recommendations")
+	q := u.Query()
+	q.Set("user_id", "eq."+userID)
+	q.Set("target_type", "eq."+targetType)
+	u.RawQuery = q.Encode()
+
+	resp, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetHeader("Prefer", "return=minimal").
+		Delete(u.String())
+
+	if err != nil {
+		return fmt.Errorf("delete orientation recommendations: %w", err)
+	}
+	if resp.IsError() {
+		return fmt.Errorf("delete orientation recommendations HTTP %d: %s", resp.StatusCode(), resp.String())
+	}
+
+	return nil
+}
+
+func deriveOrientationRecommendationScore(index, total int) float64 {
+	if total <= 1 {
+		return 1
+	}
+
+	score := float64(total-index) / float64(total)
+	if score < 0.05 {
+		return 0.05
+	}
+
+	return score
+}
+
+func uniqueOrderedIDs(ids []string) []string {
+	seen := make(map[string]bool, len(ids))
+	out := make([]string, 0, len(ids))
+
+	for _, id := range ids {
+		id = strings.TrimSpace(id)
+		if id == "" || seen[id] {
+			continue
+		}
+
+		seen[id] = true
+		out = append(out, id)
+	}
+
+	return out
+}
+
+func buildOrientationRecommendationReason(recommendedFields []string) string {
+	cleaned := make([]string, 0, len(recommendedFields))
+	seen := make(map[string]bool, len(recommendedFields))
+
+	for _, field := range recommendedFields {
+		field = strings.TrimSpace(field)
+		if field == "" || seen[field] {
+			continue
+		}
+
+		seen[field] = true
+		cleaned = append(cleaned, field)
+		if len(cleaned) == 3 {
+			break
+		}
+	}
+
+	if len(cleaned) == 0 {
+		return "Matched recommended fields"
+	}
+
+	return "Matched fields: " + strings.Join(cleaned, ", ")
 }
 
 func fetchUniversiteByID(id string) (*Universite, error) {
@@ -609,4 +995,313 @@ func fetchFilieresForCentres(centreIDs []string) ([]string, error) {
 
 	log.Printf("📚 Filières centres trouvées: %v", filieresSlice)
 	return filieresSlice, nil
+}
+
+// fetchMatchedFilieresForUniversite retourne les filières d'une université qui correspondent aux champs recommandés
+func fetchMatchedFilieresForUniversite(univID string, recommendedFields []string) ([]string, error) {
+	if univID == "" || len(recommendedFields) == 0 {
+		log.Printf("⚠️ fetchMatchedFilieresForUniversite: empty params - univID: %s, fields: %v", univID, recommendedFields)
+		return []string{}, nil
+	}
+
+	log.Printf("🔍 fetchMatchedFilieresForUniversite: university %s with recommended fields: %v", univID, recommendedFields)
+
+	// First, get all filieres offered by this university
+	u, _ := url.Parse(SupabaseURL + "/rest/v1/universite_filieres")
+	q := u.Query()
+	q.Set("select", "filieres(nom)")
+	q.Set("universite_id", "eq."+univID)
+	q.Set("limit", "1000")
+	u.RawQuery = q.Encode()
+
+	var rows []map[string]interface{}
+
+	resp, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetResult(&rows).
+		Get(u.String())
+
+	if err != nil || resp.IsError() {
+		log.Printf("⚠️ Error fetching filieres for university %s: HTTP %d", univID, resp.StatusCode())
+		return []string{}, err
+	}
+
+	// Extract filiere names from this university
+	var universityFilieres []string
+	for _, row := range rows {
+		if filiere, ok := row["filieres"]; ok && filiere != nil {
+			if filiereSub, ok := filiere.(map[string]interface{}); ok {
+				if name, ok := filiereSub["nom"].(string); ok {
+					universityFilieres = append(universityFilieres, name)
+				}
+			}
+		}
+	}
+
+	log.Printf("🏫 University %s offers filieres: %v", univID, universityFilieres)
+
+	// 🔥 INTELLIGENT MATCHING: Use new keyword-based matching system
+	var matchedFilieres []string
+
+	for _, uniFiliere := range universityFilieres {
+		for _, recField := range recommendedFields {
+			if isFieldMatch(recField, uniFiliere) {
+				matchedFilieres = append(matchedFilieres, uniFiliere)
+				log.Printf("✅ Match found: '%s' matches '%s'", recField, uniFiliere)
+				break // Found a match for this uni filiere, no need to check other rec fields
+			}
+		}
+	}
+
+	// Hard filter for excluded domains to prevent false positives.
+	var filteredMatched []string
+	for _, f := range matchedFilieres {
+		if !isExcludedField(normalizeField(f)) {
+			filteredMatched = append(filteredMatched, f)
+		}
+	}
+
+	// Remove duplicates and limit to 5
+	matchedMap := make(map[string]bool)
+	var result []string
+	for _, f := range filteredMatched {
+		if !matchedMap[f] && len(result) < 5 {
+			matchedMap[f] = true
+			result = append(result, f)
+		}
+	}
+
+	log.Printf("✅ Matched filieres for university %s: %v", univID, result)
+	return result, nil
+}
+
+// fetchMatchedFilieresForCentre retourne les filières d'un centre qui correspondent aux champs recommandés
+func fetchMatchedFilieresForCentre(centreID string, recommendedFields []string) ([]string, error) {
+	if centreID == "" || len(recommendedFields) == 0 {
+		return []string{}, nil
+	}
+
+	// 🔥 CORRECTED QUERY: Use proper table pivot centre_formation_filieres
+	// First get all filiere_ids for this centre
+	u1, _ := url.Parse(SupabaseURL + "/rest/v1/centre_formation_filieres")
+	q1 := u1.Query()
+	q1.Set("select", "filiere_id")
+	q1.Set("centre_formation_id", "eq."+centreID)
+	u1.RawQuery = q1.Encode()
+
+	var pivotRows []map[string]interface{}
+
+	resp1, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetResult(&pivotRows).
+		Get(u1.String())
+
+	if err != nil || resp1.IsError() {
+		log.Printf("⚠️ Error fetching pivot data for centre %s: HTTP %d", centreID, resp1.StatusCode())
+		return []string{}, nil
+	}
+
+	// Extract filiere_ids
+	var filiereIDs []string
+	for _, row := range pivotRows {
+		if fid, ok := row["filiere_id"].(string); ok && fid != "" {
+			filiereIDs = append(filiereIDs, fid)
+		}
+	}
+
+	if len(filiereIDs) == 0 {
+		log.Printf("ℹ️ No filieres found for centre %s", centreID)
+		return []string{}, nil
+	}
+
+	// 🔥 BUSINESS MAPPING: Map PROA recommended fields to actual centre filiere names
+	// This handles the mismatch between PROA field names and centre filiere names
+	mappedRecommendedFields := expandRecommendedFields(recommendedFields)
+	log.Printf("🔄 Mapped recommended fields: %v -> %v", recommendedFields, mappedRecommendedFields)
+
+	// 🔥 INTELLIGENT MATCHING: Get ALL filieres first, then match in Go
+	// This allows for sophisticated keyword matching instead of exact string matching
+
+	// Get ALL filiere names for this centre (no filtering)
+	u2, _ := url.Parse(SupabaseURL + "/rest/v1/filieres_centre")
+	q2 := u2.Query()
+	q2.Set("select", "nom")
+	q2.Set("id", "in.("+strings.Join(filiereIDs, ",")+")")
+	u2.RawQuery = q2.Encode()
+
+	var filiereRows []map[string]interface{}
+
+	resp2, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetResult(&filiereRows).
+		Get(u2.String())
+
+	if err != nil || resp2.IsError() {
+		log.Printf("⚠️ Error fetching filiere names for centre %s: HTTP %d", centreID, resp2.StatusCode())
+		return []string{}, nil
+	}
+
+	// Extract ALL centre filiere names
+	var centreFilieres []string
+	for _, row := range filiereRows {
+		if name, ok := row["nom"].(string); ok && name != "" {
+			centreFilieres = append(centreFilieres, name)
+		}
+	}
+
+	log.Printf("🏢 Centre %s offers filieres: %v", centreID, centreFilieres)
+
+	// 🔥 INTELLIGENT MATCHING: Use new keyword-based matching system
+	var matchedFilieres []string
+	for _, centreFiliere := range centreFilieres {
+		for _, recField := range mappedRecommendedFields {
+			if isFieldMatch(recField, centreFiliere) {
+				matchedFilieres = append(matchedFilieres, centreFiliere)
+				log.Printf("✅ Match found: '%s' matches '%s'", recField, centreFiliere)
+				break // Found a match for this centre filiere
+			}
+		}
+	}
+
+	// Hard filter for excluded domains to prevent false positives.
+	var filteredMatched []string
+	for _, f := range matchedFilieres {
+		if !isExcludedField(normalizeField(f)) {
+			filteredMatched = append(filteredMatched, f)
+		}
+	}
+
+	// Remove duplicates and limit to 5
+	matchedMap := make(map[string]bool)
+	var result []string
+	for _, f := range filteredMatched {
+		if !matchedMap[f] && len(result) < 5 {
+			matchedMap[f] = true
+			result = append(result, f)
+		}
+	}
+
+	log.Printf("✅ Matched filieres for centre %s: %v", centreID, result)
+	return result, nil
+}
+
+// fetchRealFilieresForCentre retourne TOUTES les filières réelles proposées par un centre
+func fetchRealFilieresForCentre(centreID string) ([]string, error) {
+	if centreID == "" {
+		return []string{}, nil
+	}
+
+	log.Printf("🔍 Fetching ALL real filieres for centre %s", centreID)
+
+	// Get all filiere_ids for this centre
+	u1, _ := url.Parse(SupabaseURL + "/rest/v1/centre_formation_filieres")
+	q1 := u1.Query()
+	q1.Set("select", "filiere_id")
+	q1.Set("centre_formation_id", "eq."+centreID)
+	u1.RawQuery = q1.Encode()
+
+	var pivotRows []map[string]interface{}
+
+	resp1, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetResult(&pivotRows).
+		Get(u1.String())
+
+	if err != nil || resp1.IsError() {
+		log.Printf("⚠️ Error fetching pivot data for centre %s: HTTP %d", centreID, resp1.StatusCode())
+		return []string{}, nil
+	}
+
+	// Extract filiere_ids
+	var filiereIDs []string
+	for _, row := range pivotRows {
+		if fid, ok := row["filiere_id"].(string); ok && fid != "" {
+			filiereIDs = append(filiereIDs, fid)
+		}
+	}
+
+	if len(filiereIDs) == 0 {
+		log.Printf("ℹ️ No filieres found for centre %s", centreID)
+		return []string{}, nil
+	}
+
+	// Get ALL filiere names for this centre (no filtering by recommended fields)
+	u2, _ := url.Parse(SupabaseURL + "/rest/v1/filieres_centre")
+	q2 := u2.Query()
+	q2.Set("select", "nom")
+	q2.Set("id", "in.("+strings.Join(filiereIDs, ",")+")")
+	u2.RawQuery = q2.Encode()
+
+	var filiereRows []map[string]interface{}
+
+	resp2, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetResult(&filiereRows).
+		Get(u2.String())
+
+	if err != nil || resp2.IsError() {
+		log.Printf("⚠️ Error fetching filiere names for centre %s: HTTP %d", centreID, resp2.StatusCode())
+		return []string{}, nil
+	}
+
+	// Extract ALL real filiere names
+	var realFilieres []string
+	for _, row := range filiereRows {
+		if name, ok := row["nom"].(string); ok && name != "" {
+			realFilieres = append(realFilieres, name)
+		}
+	}
+
+	log.Printf("✅ Real filieres for centre %s: %v", centreID, realFilieres)
+	return realFilieres, nil
+}
+
+// fetchRealFilieresForUniversite retourne TOUTES les filières réelles proposées par une université
+func fetchRealFilieresForUniversite(univID string) ([]string, error) {
+	if univID == "" {
+		return []string{}, nil
+	}
+
+	log.Printf("🔍 Fetching ALL real filieres for university %s", univID)
+
+	// Get all filiere_ids for this university
+	u, _ := url.Parse(SupabaseURL + "/rest/v1/universite_filieres")
+	q := u.Query()
+	q.Set("select", "filieres(nom)")
+	q.Set("universite_id", "eq."+univID)
+	q.Set("limit", "1000")
+	u.RawQuery = q.Encode()
+
+	var rows []map[string]interface{}
+
+	resp, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetResult(&rows).
+		Get(u.String())
+
+	if err != nil || resp.IsError() {
+		log.Printf("⚠️ Error fetching filieres for university %s: HTTP %d", univID, resp.StatusCode())
+		return []string{}, nil
+	}
+
+	// Extract filiere names from this university
+	var realFilieres []string
+	for _, row := range rows {
+		if filiere, ok := row["filieres"]; ok && filiere != nil {
+			if filiereSub, ok := filiere.(map[string]interface{}); ok {
+				if name, ok := filiereSub["nom"].(string); ok {
+					realFilieres = append(realFilieres, name)
+				}
+			}
+		}
+	}
+
+	log.Printf("✅ Real filieres for university %s: %v", univID, realFilieres)
+	return realFilieres, nil
 }
