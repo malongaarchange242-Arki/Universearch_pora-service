@@ -541,7 +541,7 @@ func fetchOrientationScores(targetType string) (map[string]float64, error) {
 	return out, nil
 }
 
-func replaceOrientationRecommendations(userID, profileID, targetType string, targetIDs []string, recommendedFields []string, sessionID string, targetNames map[string]string) error {
+func replaceOrientationRecommendations(userID, profileID, targetType string, targetIDs []string, recommendedFields []string, sessionID string, targetNames map[string]string, userType string) error {
 	userID = strings.TrimSpace(userID)
 	profileID = strings.TrimSpace(profileID)
 	targetType = strings.TrimSpace(targetType)
@@ -555,7 +555,7 @@ func replaceOrientationRecommendations(userID, profileID, targetType string, tar
 		return fmt.Errorf("unsupported target_type: %s", targetType)
 	}
 
-	if err := ensureUserExists(userID); err != nil {
+	if err := ensureUserExists(userID, userType); err != nil {
 		return fmt.Errorf("ensure user exists: %w", err)
 	}
 
@@ -645,10 +645,15 @@ func insertOrientationRecommendations(rows []map[string]interface{}) error {
 	return nil
 }
 
-func ensureUserExists(userID string) error {
+func ensureUserExists(userID, userType string) error {
 	userID = strings.TrimSpace(userID)
+	userType = strings.TrimSpace(userType)
 	if userID == "" {
 		return fmt.Errorf("user_id is required")
+	}
+
+	if userType == "" {
+		userType = "bachelier"
 	}
 
 	u, _ := url.Parse(SupabaseURL + "/rest/v1/utilisateurs")
@@ -679,9 +684,11 @@ func ensureUserExists(userID string) error {
 		return nil
 	}
 
-	// Create missing user with minimal fields
+	// 🔐 Create missing user with user_type from JWT
+	// user_type comes from JWT token, not from frontend input
 	insertBody := []map[string]interface{}{{
-		"id": userID,
+		"id":        userID,
+		"user_type": userType,
 	}}
 
 	u2, _ := url.Parse(SupabaseURL + "/rest/v1/utilisateurs")
@@ -700,7 +707,7 @@ func ensureUserExists(userID string) error {
 		return fmt.Errorf("create utilisateur HTTP %d: %s", resp2.StatusCode(), resp2.String())
 	}
 
-	log.Printf("✅ User auto-created: %s", userID)
+	log.Printf("✅ User auto-created: id=%s | user_type=%s", userID, userType)
 	return nil
 }
 

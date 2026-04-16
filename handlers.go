@@ -354,6 +354,7 @@ func PostUniversiteRecommendations(c *gin.Context) {
 		RecommendedFields []string           `json:"recommended_fields"`
 		FieldScores       map[string]float64 `json:"field_scores,omitempty"`
 		QuizType          string             `json:"quiz_type"`
+		UserType          string             `json:"user_type"` // 🔐 From JWT (frontend extracted)
 	}
 
 	// Log le body brut pour debug
@@ -386,7 +387,7 @@ func PostUniversiteRecommendations(c *gin.Context) {
 
 	// 🔒 Gestion des filières vides
 	if body.RecommendedFields == nil || len(body.RecommendedFields) == 0 {
-		if err := replaceOrientationRecommendations(body.UserID, body.ProfileID, "universite", nil, nil, sessionID, map[string]string{}); err != nil {
+		if err := replaceOrientationRecommendations(body.UserID, body.ProfileID, "universite", nil, nil, sessionID, map[string]string{}, body.UserType); err != nil {
 			log.Printf("❌ POST /recommendations/universites - Persist empty recommendations error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -429,7 +430,7 @@ func PostUniversiteRecommendations(c *gin.Context) {
 		}
 	}
 
-	if err := replaceOrientationRecommendations(body.UserID, body.ProfileID, "universite", universiteIDs, body.RecommendedFields, sessionID, universiteNames); err != nil {
+	if err := replaceOrientationRecommendations(body.UserID, body.ProfileID, "universite", universiteIDs, body.RecommendedFields, sessionID, universiteNames, body.UserType); err != nil {
 		log.Printf("❌ POST /recommendations/universites - Persist error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -522,6 +523,7 @@ func PostCentreRecommendations(c *gin.Context) {
 		RecommendedFields []string           `json:"recommended_fields"`
 		FieldScores       map[string]float64 `json:"field_scores,omitempty"`
 		QuizType          string             `json:"quiz_type"`
+		UserType          string             `json:"user_type"` // 🔐 From JWT (frontend extracted)
 	}
 
 	// Log le body brut pour debug
@@ -553,7 +555,7 @@ func PostCentreRecommendations(c *gin.Context) {
 
 	// 🔒 Gestion des filières vides
 	if body.RecommendedFields == nil || len(body.RecommendedFields) == 0 {
-		if err := replaceOrientationRecommendations(body.UserID, body.ProfileID, "centre", nil, nil, sessionID, map[string]string{}); err != nil {
+		if err := replaceOrientationRecommendations(body.UserID, body.ProfileID, "centre", nil, nil, sessionID, map[string]string{}, body.UserType); err != nil {
 			log.Printf("❌ POST /recommendations/centres - Persist empty recommendations error: %v", err)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
@@ -596,7 +598,7 @@ func PostCentreRecommendations(c *gin.Context) {
 		}
 	}
 
-	if err := replaceOrientationRecommendations(body.UserID, body.ProfileID, "centre", centreIDs, body.RecommendedFields, sessionID, centreNames); err != nil {
+	if err := replaceOrientationRecommendations(body.UserID, body.ProfileID, "centre", centreIDs, body.RecommendedFields, sessionID, centreNames, body.UserType); err != nil {
 		log.Printf("❌ POST /recommendations/centres - Persist error: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
