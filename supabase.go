@@ -133,6 +133,10 @@ func isFieldMatch(userField, uniField string) bool {
 
 	// Engineering keywords (non-generic)
 	engKeywords := []string{"mecanique", "electrique", "electronique", "civil", "chimie", "chimique", "industriel", "procedes", "geologique", "hydrosystemes", "hydrosysteme", "aeronautique"}
+	lawKeywords := []string{"droit", "juridique", "justice", "penal", "affaires", "public", "prive", "politique", "diplomatie", "gouvernance"}
+	healthKeywords := []string{"sante", "medecine", "medical", "pharmacie", "infirm", "dentaire", "biomed", "kine", "laboratoire"}
+	scienceKeywords := []string{"biologie", "biotechnologie", "physique", "mathematique", "mathematiques", "statistique", "recherche", "science"}
+	environmentKeywords := []string{"environnement", "ecologie", "qhse", "agronomie", "agriculture", "agro", "hydro", "geologie", "geophysique"}
 
 	if containsGenieInformatique(userNorm) {
 		return containsAnyText(uniNorm, itKeywords)
@@ -144,6 +148,22 @@ func isFieldMatch(userField, uniField string) bool {
 
 	if containsAnyText(userNorm, engKeywords) {
 		return containsAnyText(uniNorm, engKeywords)
+	}
+
+	if containsAnyText(userNorm, lawKeywords) {
+		return containsAnyText(uniNorm, lawKeywords)
+	}
+
+	if containsAnyText(userNorm, healthKeywords) {
+		return containsAnyText(uniNorm, healthKeywords)
+	}
+
+	if containsAnyText(userNorm, scienceKeywords) {
+		return containsAnyText(uniNorm, scienceKeywords)
+	}
+
+	if containsAnyText(userNorm, environmentKeywords) {
+		return containsAnyText(uniNorm, environmentKeywords)
 	}
 
 	// Direct substring match (case insensitive), guarded against generic "genie" only
@@ -158,17 +178,9 @@ func isFieldMatch(userField, uniField string) bool {
 }
 
 func isExcludedField(text string) bool {
-	excludedKeywords := []string{
-		"geologique",
-		"hydrosysteme",
-		"hydrosystemes",
-		"chimie",
-		"chimique",
-		"biologie",
-		"biotechnologie",
-		"agronomie",
-	}
-	return containsAnyText(text, excludedKeywords)
+	// Do not exclude whole field families at matching time.
+	// The recommendation engine should be able to surface any filiere present in base.
+	return false
 }
 
 func containsAnyText(text string, keywords []string) bool {
@@ -1157,7 +1169,7 @@ func fetchMatchedFilieresForCentre(centreID string, recommendedFields []string) 
 	u1, _ := url.Parse(SupabaseURL + "/rest/v1/centre_formation_filieres")
 	q1 := u1.Query()
 	q1.Set("select", "filiere_id")
-	q1.Set("centre_formation_id", "eq."+centreID)
+	q1.Set("centre_id", "eq."+centreID)
 	u1.RawQuery = q1.Encode()
 
 	var pivotRows []map[string]interface{}
@@ -1270,7 +1282,7 @@ func fetchRealFilieresForCentre(centreID string) ([]string, error) {
 	u1, _ := url.Parse(SupabaseURL + "/rest/v1/centre_formation_filieres")
 	q1 := u1.Query()
 	q1.Set("select", "filiere_id")
-	q1.Set("centre_formation_id", "eq."+centreID)
+	q1.Set("centre_id", "eq."+centreID)
 	u1.RawQuery = q1.Encode()
 
 	var pivotRows []map[string]interface{}
