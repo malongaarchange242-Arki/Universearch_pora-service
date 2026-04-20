@@ -216,18 +216,35 @@ func fetchUniversitesByFilieres(filiereIDs []string) ([]map[string]interface{}, 
 
 	log.Printf("📋 Relations trouvées: %d relations universite-filiere", len(relations))
 
-	// Récupérer les IDs des universités uniques
-	univMap := make(map[string]bool)
+	// 🔥 STRICT FILTER: Si aucune relation trouvée, retourner liste vide
+	if len(relations) == 0 {
+		log.Printf("🔴 STRICT FILTER: Aucune relation universite-filiere trouvée - retour vide")
+		log.Printf("   Filieres demandées: %v", filiereIDs)
+		return []map[string]interface{}{}, nil
+	}
+
+	// Récupérer les IDs des universités uniques + compter les filières par université
+	univMap := make(map[string][]string) // univID → list of matched filiereIDs
 	for _, rel := range relations {
 		univID := fmt.Sprintf("%v", rel["universite_id"])
-		univMap[univID] = true
+		filiereID := fmt.Sprintf("%v", rel["filiere_id"])
+		univMap[univID] = append(univMap[univID], filiereID)
 	}
 
 	// Récupérer les infos complètes des universités
 	var universites []map[string]interface{}
-	for univID := range univMap {
+	for univID, matchedFilieres := range univMap {
 		univ, err := fetchUniversiteWithFilieres(univID, filiereIDs)
 		if err == nil && univ != nil {
+			// 🎯 BONUS: Ajouter un score de compatibilité
+			compatibilityScore := float64(len(matchedFilieres)) / float64(len(filiereIDs))
+			univ["matching_fields_count"] = len(matchedFilieres)
+			univ["total_recommended_fields"] = len(filiereIDs)
+			univ["compatibility_score"] = compatibilityScore
+			
+			log.Printf("✅ Université %s: %d/%d filières compatibles (score: %.1f%%)",
+				univ["nom"], len(matchedFilieres), len(filiereIDs), compatibilityScore*100)
+			
 			universites = append(universites, univ)
 		}
 	}
@@ -278,49 +295,16 @@ func fetchUniversitesByFilieresGET(filiereIDs []string) ([]map[string]interface{
 }
 
 // generateUniversiteFilieresFallback crée des relations de test en mémoire
+// 🔥 FIXED: Return empty list instead of all universities to avoid showing irrelevant institutions
 func generateUniversiteFilieresFallback(filiereIDs []string) []map[string]interface{} {
-	// Récupérer les universités
-	var universites []map[string]interface{}
-	u, _ := url.Parse(SupabaseURL + "/rest/v1/universites?select=id,domaine")
-	resp, _ := httpClient.R().SetHeader("apikey", SupabaseService).SetHeader("Authorization", "Bearer "+SupabaseService).SetResult(&universites).Get(u.String())
-	if resp.IsError() || len(universites) == 0 {
-		return []map[string]interface{}{}
-	}
+	// 🔴 FIX CRITIQUE: Ne pas retourner TOUTES les universités
+	// Si la table universite_filieres est vide, c'est un problème de données
+	// Pas une raison pour montrer toutes les universités!
+	log.Printf("⚠️ FALLBACK UTILISÉ - Data integrity issue detected")
+	log.Printf("🔴 RETURNING EMPTY LIST: universite_filieres table is empty or misconfigured")
 
-	// Créer des relations basées sur les domaines
-	var relations []map[string]interface{}
-	for _, univ := range universites {
-		univID := fmt.Sprintf("%v", univ["id"])
-		domaine := strings.ToLower(fmt.Sprintf("%v", univ["domaine"]))
-
-		// Mapper les domaines aux filières
-		shouldInclude := false
-		switch {
-		case strings.Contains(domaine, "sciences") && len(filiereIDs) > 0:
-			shouldInclude = true
-		case strings.Contains(domaine, "économ") && len(filiereIDs) > 0:
-			shouldInclude = true
-		case strings.Contains(domaine, "technolog") && len(filiereIDs) > 0:
-			shouldInclude = true
-		case strings.Contains(domaine, "informatique") && len(filiereIDs) > 0:
-			shouldInclude = true
-		case len(filiereIDs) > 0:
-			shouldInclude = true // Pour le test, inclure toutes les universités
-		}
-
-		if shouldInclude {
-			// Créer une relation pour chaque filière
-			for _, filiereID := range filiereIDs {
-				relations = append(relations, map[string]interface{}{
-					"universite_id": univID,
-					"filiere_id":    filiereID,
-				})
-			}
-		}
-	}
-
-	log.Printf("📌 Fallback: généré %d relations temporaires", len(relations))
-	return relations
+	// Return empty list to force data integrity
+	return []map[string]interface{}{}
 }
 
 // fetchUniversiteWithFilieres récupère une université avec ses filières filtrées
@@ -387,30 +371,40 @@ func fetchCentresByFilieres(filiereIDs []string) ([]map[string]interface{}, erro
 
 	if err != nil || resp.IsError() {
 		log.Printf("⚠️ Erreur fetch relations centres: %v", err)
-		// Fallback: générer en mémoire
-		relations = generateCentreFilieresFallback(filiereIDs)
+		relations = []map[string]interface{}{}
 	}
 
-	// Si aucune relation trouvée, utiliser fallback
+	// 🔥 STRICT FILTER: Si aucune relation trouvée, retourner liste vide
 	if len(relations) == 0 {
-		log.Println("⚠️ Aucune relation dans centres_formation_filieres, utilisation du fallback en mémoire")
-		relations = generateCentreFilieresFallback(filiereIDs)
+		log.Printf("🔴 STRICT FILTER: Aucune relation centre-filiere trouvée - retour vide")
+		log.Printf("   Filieres demandées: %v", filiereIDs)
+		return []map[string]interface{}{}, nil
 	}
 
 	log.Printf("📋 Relations centres trouvées: %d relations centre-filiere", len(relations))
 
-	// Récupérer les IDs des centres uniques
-	centreMap := make(map[string]bool)
+	// Récupérer les IDs des centres uniques + compter les filières par centre
+	centreMap := make(map[string][]string) // centreID → list of matched filiereIDs
 	for _, rel := range relations {
 		centreID := fmt.Sprintf("%v", rel["centre_id"])
-		centreMap[centreID] = true
+		filiereID := fmt.Sprintf("%v", rel["filiere_id"])
+		centreMap[centreID] = append(centreMap[centreID], filiereID)
 	}
 
 	// Récupérer les infos complètes des centres
 	var centres []map[string]interface{}
-	for centreID := range centreMap {
+	for centreID, matchedFilieres := range centreMap {
 		centre, err := fetchCentreWithFilieres(centreID, filiereIDs)
 		if err == nil && centre != nil {
+			// 🎯 BONUS: Ajouter un score de compatibilité
+			compatibilityScore := float64(len(matchedFilieres)) / float64(len(filiereIDs))
+			centre["matching_fields_count"] = len(matchedFilieres)
+			centre["total_recommended_fields"] = len(filiereIDs)
+			centre["compatibility_score"] = compatibilityScore
+			
+			log.Printf("✅ Centre %s: %d/%d filières compatibles (score: %.1f%%)",
+				centre["nom"], len(matchedFilieres), len(filiereIDs), compatibilityScore*100)
+			
 			centres = append(centres, centre)
 		}
 	}
@@ -459,51 +453,14 @@ func min(a, b int) int {
 }
 
 // generateCentreFilieresFallback crée des relations de test pour centres
+// 🔥 FIXED: Return empty list instead of all centres to avoid showing irrelevant institutions
 func generateCentreFilieresFallback(filiereIDs []string) []map[string]interface{} {
-	// Récupérer les centres
-	var centres []map[string]interface{}
-	u, _ := url.Parse(SupabaseURL + "/rest/v1/centres_formation?select=id,domaine")
-	resp, _ := httpClient.R().SetHeader("apikey", SupabaseService).SetHeader("Authorization", "Bearer "+SupabaseService).SetResult(&centres).Get(u.String())
-	if resp.IsError() || len(centres) == 0 {
-		return []map[string]interface{}{}
-	}
+	// 🔴 FIX CRITIQUE: Ne pas retourner TOUS les centres
+	// Si la table centre_formation_filieres est vide, c'est un problème de données
+	// Pas une raison pour montrer tous les centres!
+	log.Printf("⚠️ FALLBACK UTILISÉ POUR CENTRES - Data integrity issue detected")
+	log.Printf("🔴 RETURNING EMPTY LIST: centre_formation_filieres table is empty or misconfigured")
 
-	// Créer des relations basées sur les domaines
-	var relations []map[string]interface{}
-	for _, centre := range centres {
-		centreID := fmt.Sprintf("%v", centre["id"])
-		domaine := strings.ToLower(fmt.Sprintf("%v", centre["domaine"]))
-
-		// Inclure si le domaine contient des mots-clés communs
-		shouldInclude := false
-		if len(filiereIDs) > 0 {
-			switch {
-			case strings.Contains(domaine, "informatique"):
-				shouldInclude = true
-			case strings.Contains(domaine, "technolog"):
-				shouldInclude = true
-			case strings.Contains(domaine, "digital"):
-				shouldInclude = true
-			case strings.Contains(domaine, "développement"):
-				shouldInclude = true
-			case strings.Contains(domaine, "formation"):
-				shouldInclude = true
-			default:
-				shouldInclude = true // Inclure tous les centres pour simplifier
-			}
-		}
-
-		if shouldInclude {
-			// Créer une relation pour chaque filière
-			for _, filiereID := range filiereIDs {
-				relations = append(relations, map[string]interface{}{
-					"centre_id":  centreID,
-					"filiere_id": filiereID,
-				})
-			}
-		}
-	}
-
-	log.Printf("📌 Fallback centres: généré %d relations temporaires", len(relations))
-	return relations
+	// Return empty list to force data integrity
+	return []map[string]interface{}{}
 }
