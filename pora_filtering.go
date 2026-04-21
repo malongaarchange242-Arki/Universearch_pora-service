@@ -241,14 +241,22 @@ func fetchUniversitesByFilieres(filiereIDs []string) ([]map[string]interface{}, 
 			univ["matching_fields_count"] = len(matchedFilieres)
 			univ["total_recommended_fields"] = len(filiereIDs)
 			univ["compatibility_score"] = compatibilityScore
-			
+
 			log.Printf("✅ Université %s: %d/%d filières compatibles (score: %.1f%%)",
 				univ["nom"], len(matchedFilieres), len(filiereIDs), compatibilityScore*100)
-			
+
 			universites = append(universites, univ)
 		}
 	}
 
+	// 🔥 TRI INTELLIGENT: Trier par score de compatibilité décroissant
+	sort.Slice(universites, func(i, j int) bool {
+		scoreI := universites[i]["compatibility_score"].(float64)
+		scoreJ := universites[j]["compatibility_score"].(float64)
+		return scoreI > scoreJ // Descending order (highest score first)
+	})
+
+	log.Printf("✅ Universités triées par compatibilité: %d résultats", len(universites))
 	return universites, nil
 }
 
@@ -401,14 +409,22 @@ func fetchCentresByFilieres(filiereIDs []string) ([]map[string]interface{}, erro
 			centre["matching_fields_count"] = len(matchedFilieres)
 			centre["total_recommended_fields"] = len(filiereIDs)
 			centre["compatibility_score"] = compatibilityScore
-			
+
 			log.Printf("✅ Centre %s: %d/%d filières compatibles (score: %.1f%%)",
 				centre["nom"], len(matchedFilieres), len(filiereIDs), compatibilityScore*100)
-			
+
 			centres = append(centres, centre)
 		}
 	}
 
+	// 🔥 TRI INTELLIGENT: Trier par score de compatibilité décroissant
+	sort.Slice(centres, func(i, j int) bool {
+		scoreI := centres[i]["compatibility_score"].(float64)
+		scoreJ := centres[j]["compatibility_score"].(float64)
+		return scoreI > scoreJ // Descending order (highest score first)
+	})
+
+	log.Printf("✅ Centres triés par compatibilité: %d résultats", len(centres))
 	return centres, nil
 }
 
