@@ -659,16 +659,11 @@ func insertOrientationRecommendations(rows []map[string]interface{}) error {
 
 func ensureUserExists(userID, userType string) error {
 	userID = strings.TrimSpace(userID)
-	userType = strings.TrimSpace(userType)
+	userType = normalizeOrientationUserType(userType)
 	if userID == "" {
 		return fmt.Errorf("user_id is required")
 	}
 
-	if userType == "" {
-		userType = "bachelier"
-	}
-
-	// First check if utilisateur exists
 	u, _ := url.Parse(SupabaseURL + "/rest/v1/utilisateurs")
 	q := u.Query()
 	q.Set("select", "id")
@@ -694,10 +689,9 @@ func ensureUserExists(userID, userType string) error {
 	}
 
 	if len(rows) > 0 {
-		return nil // User already exists
+		return nil
 	}
 
-	// User doesn't exist, check if profile exists
 	pu, _ := url.Parse(SupabaseURL + "/rest/v1/profiles")
 	pq := pu.Query()
 	pq.Set("select", "id,email")
@@ -723,7 +717,7 @@ func ensureUserExists(userID, userType string) error {
 	}
 
 	if len(prows) == 0 {
-		// Profile doesn't exist, get email from auth.users
+		email := ""
 		authURL := SupabaseURL + "/auth/v1/admin/users/" + userID
 		authResp, err := httpClient.R().
 			SetHeader("apikey", SupabaseService).
@@ -734,25 +728,29 @@ func ensureUserExists(userID, userType string) error {
 		if err != nil {
 			return fmt.Errorf("get auth user: %w", err)
 		}
+
 		if authResp.IsError() {
 			if authResp.StatusCode() == 404 && strings.Contains(strings.ToLower(authResp.String()), "user_not_found") {
-				log.Printf("⚠️ ensureUserExists skipped auto-create for missing auth user: id=%s", userID)
-				return nil
+				email = fallbackOrientationProfileEmail(userID)
+				log.Printf("ensureUserExists using fallback profile for missing auth user: id=%s | email=%s", userID, email)
+			} else {
+				return fmt.Errorf("get auth user HTTP %d: %s", authResp.StatusCode(), authResp.String())
 			}
-			return fmt.Errorf("get auth user HTTP %d: %s", authResp.StatusCode(), authResp.String())
+		} else {
+			var authUser map[string]interface{}
+			if err := json.Unmarshal(authResp.Body(), &authUser); err != nil {
+				return fmt.Errorf("parse auth user response: %w", err)
+			}
+
+			authEmail, ok := authUser["email"].(string)
+			if !ok || strings.TrimSpace(authEmail) == "" {
+				email = fallbackOrientationProfileEmail(userID)
+				log.Printf("ensureUserExists auth user has no email, using fallback: id=%s | email=%s", userID, email)
+			} else {
+				email = strings.TrimSpace(authEmail)
+			}
 		}
 
-		var authUser map[string]interface{}
-		if err := json.Unmarshal(authResp.Body(), &authUser); err != nil {
-			return fmt.Errorf("parse auth user response: %w", err)
-		}
-
-		email, ok := authUser["email"].(string)
-		if !ok || email == "" {
-			return fmt.Errorf("no email found for user %s", userID)
-		}
-
-		// Create profile
 		profileBody := []map[string]interface{}{{
 			"id":           userID,
 			"email":        email,
@@ -771,14 +769,13 @@ func ensureUserExists(userID, userType string) error {
 		if err != nil {
 			return fmt.Errorf("create profile: %w", err)
 		}
-		if presp2.IsError() {
+		if presp2.IsError() && presp2.StatusCode() != 409 {
 			return fmt.Errorf("create profile HTTP %d: %s", presp2.StatusCode(), presp2.String())
 		}
 
-		log.Printf("✅ Profile auto-created: id=%s | email=%s", userID, email)
+		log.Printf("Profile ensured: id=%s | email=%s", userID, email)
 	}
 
-	// Now create utilisateur
 	insertBody := []map[string]interface{}{{
 		"id":        userID,
 		"user_type": userType,
@@ -796,12 +793,25 @@ func ensureUserExists(userID, userType string) error {
 	if err != nil {
 		return fmt.Errorf("create utilisateur: %w", err)
 	}
-	if resp2.IsError() {
+	if resp2.IsError() && resp2.StatusCode() != 409 {
 		return fmt.Errorf("create utilisateur HTTP %d: %s", resp2.StatusCode(), resp2.String())
 	}
 
-	log.Printf("✅ User auto-created: id=%s | user_type=%s", userID, userType)
+	log.Printf("User ensured: id=%s | user_type=%s", userID, userType)
 	return nil
+}
+
+func normalizeOrientationUserType(userType string) string {
+	switch strings.TrimSpace(strings.ToLower(userType)) {
+	case "bachelier", "etudiant", "parent":
+		return strings.TrimSpace(strings.ToLower(userType))
+	default:
+		return "bachelier"
+	}
+}
+
+func fallbackOrientationProfileEmail(userID string) string {
+	return fmt.Sprintf("pora+%s@universearch.local", strings.ToLower(strings.TrimSpace(userID)))
 }
 
 func deleteOrientationRecommendations(userID, targetType string) error {
@@ -1468,3 +1478,4 @@ func fetchRealFilieresForUniversite(univID string) ([]string, error) {
 	log.Printf("✅ Real filieres for university %s: %v", univID, realFilieres)
 	return realFilieres, nil
 }
+
