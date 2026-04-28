@@ -735,6 +735,10 @@ func ensureUserExists(userID, userType string) error {
 			return fmt.Errorf("get auth user: %w", err)
 		}
 		if authResp.IsError() {
+			if authResp.StatusCode() == 404 && strings.Contains(strings.ToLower(authResp.String()), "user_not_found") {
+				log.Printf("⚠️ ensureUserExists skipped auto-create for missing auth user: id=%s", userID)
+				return nil
+			}
 			return fmt.Errorf("get auth user HTTP %d: %s", authResp.StatusCode(), authResp.String())
 		}
 
