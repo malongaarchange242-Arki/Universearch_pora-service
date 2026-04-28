@@ -668,6 +668,7 @@ func ensureUserExists(userID, userType string) error {
 		userType = "bachelier"
 	}
 
+	// First check if utilisateur exists
 	u, _ := url.Parse(SupabaseURL + "/rest/v1/utilisateurs")
 	q := u.Query()
 	q.Set("select", "id")
@@ -693,11 +694,87 @@ func ensureUserExists(userID, userType string) error {
 	}
 
 	if len(rows) > 0 {
-		return nil
+		return nil // User already exists
 	}
 
-	// 🔐 Create missing user with user_type from JWT
-	// user_type comes from JWT token, not from frontend input
+	// User doesn't exist, check if profile exists
+	pu, _ := url.Parse(SupabaseURL + "/rest/v1/profiles")
+	pq := pu.Query()
+	pq.Set("select", "id,email")
+	pq.Set("id", "eq."+userID)
+	pu.RawQuery = pq.Encode()
+
+	presp, err := httpClient.R().
+		SetHeader("apikey", SupabaseService).
+		SetHeader("Authorization", "Bearer "+SupabaseService).
+		SetHeader("Accept", "application/json").
+		Get(pu.String())
+
+	if err != nil {
+		return fmt.Errorf("check profile existence: %w", err)
+	}
+	if presp.IsError() {
+		return fmt.Errorf("check profile HTTP %d: %s", presp.StatusCode(), presp.String())
+	}
+
+	var prows []map[string]interface{}
+	if err := json.Unmarshal(presp.Body(), &prows); err != nil {
+		return fmt.Errorf("parse profile check response: %w", err)
+	}
+
+	if len(prows) == 0 {
+		// Profile doesn't exist, get email from auth.users
+		authURL := SupabaseURL + "/auth/v1/admin/users/" + userID
+		authResp, err := httpClient.R().
+			SetHeader("apikey", SupabaseService).
+			SetHeader("Authorization", "Bearer "+SupabaseService).
+			SetHeader("Accept", "application/json").
+			Get(authURL)
+
+		if err != nil {
+			return fmt.Errorf("get auth user: %w", err)
+		}
+		if authResp.IsError() {
+			return fmt.Errorf("get auth user HTTP %d: %s", authResp.StatusCode(), authResp.String())
+		}
+
+		var authUser map[string]interface{}
+		if err := json.Unmarshal(authResp.Body(), &authUser); err != nil {
+			return fmt.Errorf("parse auth user response: %w", err)
+		}
+
+		email, ok := authUser["email"].(string)
+		if !ok || email == "" {
+			return fmt.Errorf("no email found for user %s", userID)
+		}
+
+		// Create profile
+		profileBody := []map[string]interface{}{{
+			"id":           userID,
+			"email":        email,
+			"profile_type": "utilisateur",
+		}}
+
+		pu2, _ := url.Parse(SupabaseURL + "/rest/v1/profiles")
+		presp2, err := httpClient.R().
+			SetHeader("apikey", SupabaseService).
+			SetHeader("Authorization", "Bearer "+SupabaseService).
+			SetHeader("Content-Type", "application/json").
+			SetHeader("Prefer", "return=minimal").
+			SetBody(profileBody).
+			Post(pu2.String())
+
+		if err != nil {
+			return fmt.Errorf("create profile: %w", err)
+		}
+		if presp2.IsError() {
+			return fmt.Errorf("create profile HTTP %d: %s", presp2.StatusCode(), presp2.String())
+		}
+
+		log.Printf("✅ Profile auto-created: id=%s | email=%s", userID, email)
+	}
+
+	// Now create utilisateur
 	insertBody := []map[string]interface{}{{
 		"id":        userID,
 		"user_type": userType,
