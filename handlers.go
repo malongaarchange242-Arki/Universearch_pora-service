@@ -86,11 +86,17 @@ func (c *SmartCache) Clear() {
 }
 
 // Générer clé de cache pour les recommandations
-func generateRecommendationCacheKey(userID string, fields []string, fieldScores map[string]float64) string {
+func generateRecommendationCacheKey(userID string, fields []string, fieldScores map[string]float64, budget BudgetPreference) string {
 	// Hash des paramètres pour clé déterministe
 	h := fnv.New64a()
 	h.Write([]byte(userID))
 	h.Write([]byte(strings.Join(fields, ",")))
+	h.Write([]byte(fmt.Sprintf("budget:%s:%s:", budget.Level, budget.Currency)))
+	if budget.MaxMonthlyPrice != nil {
+		h.Write([]byte(fmt.Sprintf("monthly:%.0f", *budget.MaxMonthlyPrice)))
+	} else if budget.MaxYearlyPrice != nil {
+		h.Write([]byte(fmt.Sprintf("yearly:%.0f", *budget.MaxYearlyPrice)))
+	}
 
 	// Hash des scores (triés pour déterminisme)
 	scoreKeys := make([]string, 0, len(fieldScores))
@@ -442,6 +448,7 @@ func PostUniversiteRecommendations(c *gin.Context) {
 		ProfileID         string             `json:"profile_id"` // 🔗 NOUVEAU: Traçabilité vers PROA
 		RecommendedFields []string           `json:"recommended_fields"`
 		FieldScores       map[string]float64 `json:"field_scores,omitempty"`
+		BudgetPreference  BudgetPreference   `json:"budget_preference,omitempty"`
 		QuizType          string             `json:"quiz_type"`
 		UserType          string             `json:"user_type"` // 🔐 From JWT (frontend extracted)
 	}
@@ -463,7 +470,7 @@ func PostUniversiteRecommendations(c *gin.Context) {
 	}
 
 	// 🚀 PHASE 2: CACHE INTELLIGENT
-	cacheKey := generateRecommendationCacheKey(body.UserID, body.RecommendedFields, body.FieldScores)
+	cacheKey := generateRecommendationCacheKey(body.UserID, body.RecommendedFields, body.FieldScores, body.BudgetPreference)
 	if cachedResult, found := recommendationCache.Get(cacheKey); found {
 		log.Printf("✅ [CACHE] HIT - Retour cache pour user %s", body.UserID)
 		c.JSON(http.StatusOK, cachedResult)
@@ -536,6 +543,41 @@ func PostUniversiteRecommendations(c *gin.Context) {
 	// ✅ S'assurer que le résultat n'est jamais nil
 	if filteredUniversites == nil {
 		filteredUniversites = []map[string]interface{}{}
+	}
+
+	budgetStats := gin.H{
+		"enabled": false,
+		"before":  len(filteredUniversites),
+		"after":   len(filteredUniversites),
+	}
+	if body.BudgetPreference.MaxMonthlyPrice == nil && body.BudgetPreference.MaxYearlyPrice != nil {
+		monthly := *body.BudgetPreference.MaxYearlyPrice / 12
+		body.BudgetPreference.MaxMonthlyPrice = &monthly
+	}
+
+	if body.BudgetPreference.MaxMonthlyPrice != nil {
+		beforeBudget := len(filteredUniversites)
+		var budgetErr error
+		filteredUniversites, budgetErr = filterUniversitesByBudget(filteredUniversites, *body.BudgetPreference.MaxMonthlyPrice)
+		if budgetErr != nil {
+			log.Printf("❌ POST /recommendations/universites - Budget filter error: %v", budgetErr)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": budgetErr.Error()})
+			return
+		}
+		budgetStats = gin.H{
+			"enabled":           true,
+			"label":             body.BudgetPreference.Label,
+			"max_monthly_price": *body.BudgetPreference.MaxMonthlyPrice,
+			"currency":          body.BudgetPreference.Currency,
+			"before":            beforeBudget,
+			"after":             len(filteredUniversites),
+		}
+		log.Printf("💰 Filtre frais scolarité: %d → %d universités (max mensuel %.0f %s)",
+			beforeBudget, len(filteredUniversites), *body.BudgetPreference.MaxMonthlyPrice, body.BudgetPreference.Currency)
+	} else {
+		if err := enrichUniversitesWithFeeInfo(filteredUniversites); err != nil {
+			log.Printf("⚠️ Enrich frais scolarité sans filtre échoué: %v", err)
+		}
 	}
 
 	// 🆕 PHASE 2: OPTIMISATION POUR 95-97% DE FIABILITÉ
@@ -745,6 +787,7 @@ func PostUniversiteRecommendations(c *gin.Context) {
 			"passed":            validatedCount,
 			"validation_errors": len(filteredUniversites) - validatedCount,
 		},
+		"budget_filter": budgetStats,
 	}
 
 	// 🚀 PHASE 2: Cache du résultat final
@@ -771,6 +814,7 @@ func PostCentreRecommendations(c *gin.Context) {
 		ProfileID         string             `json:"profile_id"` // 🔗 NOUVEAU: Traçabilité vers PROA
 		RecommendedFields []string           `json:"recommended_fields"`
 		FieldScores       map[string]float64 `json:"field_scores,omitempty"`
+		BudgetPreference  BudgetPreference   `json:"budget_preference,omitempty"`
 		QuizType          string             `json:"quiz_type"`
 		UserType          string             `json:"user_type"` // 🔐 From JWT (frontend extracted)
 	}

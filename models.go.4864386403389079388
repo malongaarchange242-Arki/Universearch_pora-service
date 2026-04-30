@@ -10,9 +10,7 @@ package main
 //
 
 // ==================================================
-//
-//	DÉTAILS DU SCORE PORA
-//
+//  DÉTAILS DU SCORE PORA
 // ==================================================
 type ScoreDetails struct {
 	Followers   float64 `json:"followers"`
@@ -30,9 +28,7 @@ type BudgetPreference struct {
 }
 
 // ==================================================
-//
-//	UNIVERSITÉ
-//
+//  UNIVERSITÉ
 // Table : universites
 // Score utilisé : PORA
 // ==================================================
@@ -58,9 +54,7 @@ type Universite struct {
 }
 
 // ==================================================
-//
-//	FOLLOWERS UNIVERSITÉ
-//
+//  FOLLOWERS UNIVERSITÉ
 // Table : followers_universites
 // Signal binaire PORA (popularité)
 // ==================================================
@@ -71,9 +65,7 @@ type UniversiteFollower struct {
 }
 
 // ==================================================
-//
-//	ENGAGEMENT UNIVERSITÉ
-//
+//  ENGAGEMENT UNIVERSITÉ
 // Table : engagements_universites
 // Signal fort PORA (activité)
 // ==================================================
@@ -87,9 +79,7 @@ type UniversiteEngagement struct {
 }
 
 // ==================================================
-//
-//	CENTRE DE FORMATION
-//
+//  CENTRE DE FORMATION
 // Table : centres_formation
 // Même logique PORA que les universités
 // ==================================================
@@ -114,9 +104,7 @@ type CentreFormation struct {
 }
 
 // ==================================================
-//
-//	FOLLOWERS CENTRE DE FORMATION
-//
+//  FOLLOWERS CENTRE DE FORMATION
 // Table : followers_centres_formation
 // ==================================================
 type CentreFollower struct {
@@ -126,9 +114,7 @@ type CentreFollower struct {
 }
 
 // ==================================================
-//
-//	ENGAGEMENT CENTRE DE FORMATION
-//
+//  ENGAGEMENT CENTRE DE FORMATION
 // Table : engagements_centres_formation
 // ==================================================
 type CentreEngagement struct {
@@ -141,9 +127,7 @@ type CentreEngagement struct {
 }
 
 // ==================================================
-//
-//	RECOMMANDATIONS CROISÉES
-//
+//  RECOMMANDATIONS CROISÉES
 // Table : formation_recommandations_cross
 // SIGNAL TRANSVERSAL PORA
 // ==================================================
