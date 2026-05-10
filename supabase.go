@@ -326,7 +326,13 @@ func updateUniversiteScore(id string, score float64) error {
 		Patch(u.String())
 
 	if err != nil || resp.IsError() {
-		return fmt.Errorf("update universite %s HTTP %d", id, resp.StatusCode())
+		status := 0
+		body := ""
+		if resp != nil {
+			status = resp.StatusCode()
+			body = resp.String()
+		}
+		return fmt.Errorf("update universite %s HTTP %d | body=%s", id, status, body)
 	}
 
 	return nil
@@ -973,7 +979,13 @@ func updateUniversiteScoreWithDetails(id string, score float64, details ScoreDet
 		Patch(u.String())
 
 	if err != nil || resp.IsError() {
-		return fmt.Errorf("update universite %s HTTP %d", id, resp.StatusCode())
+		status := 0
+		body := ""
+		if resp != nil {
+			status = resp.StatusCode()
+			body = resp.String()
+		}
+		return fmt.Errorf("update universite %s HTTP %d | body=%s", id, status, body)
 	}
 
 	return nil
@@ -1004,7 +1016,13 @@ func updateCentreScoreWithDetails(id string, score float64, details ScoreDetails
 		Patch(u.String())
 
 	if err != nil || resp.IsError() {
-		return fmt.Errorf("update centre %s HTTP %d", id, resp.StatusCode())
+		status := 0
+		body := ""
+		if resp != nil {
+			status = resp.StatusCode()
+			body = resp.String()
+		}
+		return fmt.Errorf("update centre %s HTTP %d | body=%s", id, status, body)
 	}
 
 	return nil
