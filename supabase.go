@@ -1496,4 +1496,3 @@ func fetchRealFilieresForUniversite(univID string) ([]string, error) {
 	log.Printf("✅ Real filieres for university %s: %v", univID, realFilieres)
 	return realFilieres, nil
 }
-

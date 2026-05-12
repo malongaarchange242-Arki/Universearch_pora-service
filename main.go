@@ -71,6 +71,10 @@ func main() {
 		})
 	})
 
+	r.HEAD("/health", func(c *gin.Context) {
+		c.Status(http.StatusOK)
+	})
+
 	// ------------------------------------------------
 	// Enregistrement des routes métier
 	// ------------------------------------------------
