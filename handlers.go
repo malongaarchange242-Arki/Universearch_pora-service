@@ -558,7 +558,8 @@ func PostUniversiteRecommendations(c *gin.Context) {
 	if body.BudgetPreference.MaxMonthlyPrice != nil {
 		beforeBudget := len(filteredUniversites)
 		var budgetErr error
-		filteredUniversites, budgetErr = filterUniversitesByBudget(filteredUniversites, *body.BudgetPreference.MaxMonthlyPrice)
+		overbudgetCount := 0
+		filteredUniversites, overbudgetCount, budgetErr = filterUniversitesByBudget(filteredUniversites, *body.BudgetPreference.MaxMonthlyPrice)
 		if budgetErr != nil {
 			log.Printf("❌ POST /recommendations/universites - Budget filter error: %v", budgetErr)
 			c.JSON(http.StatusInternalServerError, gin.H{"error": budgetErr.Error()})
@@ -571,9 +572,10 @@ func PostUniversiteRecommendations(c *gin.Context) {
 			"currency":          body.BudgetPreference.Currency,
 			"before":            beforeBudget,
 			"after":             len(filteredUniversites),
+			"over_budget_count": overbudgetCount,
 		}
-		log.Printf("💰 Filtre frais scolarité: %d → %d universités (max mensuel %.0f %s)",
-			beforeBudget, len(filteredUniversites), *body.BudgetPreference.MaxMonthlyPrice, body.BudgetPreference.Currency)
+		log.Printf("💰 Budget frais scolarité appliqué: %d universités, %d hors budget (max mensuel %.0f %s)",
+			beforeBudget, overbudgetCount, *body.BudgetPreference.MaxMonthlyPrice, body.BudgetPreference.Currency)
 	} else {
 		if err := enrichUniversitesWithFeeInfo(filteredUniversites); err != nil {
 			log.Printf("⚠️ Enrich frais scolarité sans filtre échoué: %v", err)

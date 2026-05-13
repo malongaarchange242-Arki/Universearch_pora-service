@@ -16,39 +16,48 @@ type TuitionFee struct {
 	Currency     string  `json:"currency"`
 }
 
-func filterUniversitesByBudget(items []map[string]interface{}, maxMonthlyPrice float64) ([]map[string]interface{}, error) {
+func filterUniversitesByBudget(items []map[string]interface{}, maxMonthlyPrice float64) ([]map[string]interface{}, int, error) {
 	if len(items) == 0 {
-		return []map[string]interface{}{}, nil
+		return []map[string]interface{}{}, 0, nil
 	}
 	if maxMonthlyPrice <= 0 {
-		return items, enrichUniversitesWithFeeInfo(items)
+		err := enrichUniversitesWithFeeInfo(items)
+		return items, 0, err
 	}
 
 	ids := extractUniversiteIDs(items)
 	feesByUniversite, err := fetchTuitionFeesByUniversites(ids)
 	if err != nil {
-		return nil, err
+		return nil, 0, err
 	}
 
-	filtered := make([]map[string]interface{}, 0, len(items))
+	overbudgetCount := 0
 	for _, item := range items {
 		universiteID, _ := item["id"].(string)
 		minFee, ok := minTuitionFee(feesByUniversite[universiteID])
 		if !ok {
-			log.Printf("💰 Université %s exclue: aucun frais_scolarite renseigné", universiteID)
+			log.Printf("💰 Université %s sans frais_scolarite renseigné", universiteID)
+			item["budget_status"] = "unknown"
+			item["budget_compliant"] = nil
+			item["budget_exceeded"] = false
 			continue
 		}
 
 		addFeeInfo(item, minFee)
 		if effectiveMonthlyPrice(minFee) <= maxMonthlyPrice {
-			filtered = append(filtered, item)
-			continue
+			item["budget_status"] = "compliant"
+			item["budget_compliant"] = true
+			item["budget_exceeded"] = false
+		} else {
+			item["budget_status"] = "over_budget"
+			item["budget_compliant"] = false
+			item["budget_exceeded"] = true
+			overbudgetCount++
+			log.Printf("💰 Université %s hors budget: frais mensuel %.0f > budget %.0f", universiteID, effectiveMonthlyPrice(minFee), maxMonthlyPrice)
 		}
-
-		log.Printf("💰 Université %s exclue: frais mensuel %.0f > budget %.0f", universiteID, effectiveMonthlyPrice(minFee), maxMonthlyPrice)
 	}
 
-	return filtered, nil
+	return items, overbudgetCount, nil
 }
 
 func enrichUniversitesWithFeeInfo(items []map[string]interface{}) error {
